@@ -1,8 +1,9 @@
 use chrono::offset::Local;
-use crossterm::{AlternateScreen, ClearType, Crossterm};
+use console::Term;
 use std::process::Command;
 use std::{thread, time};
 use structopt::StructOpt;
+//use termion::screen::AlternateScreen;
 
 /// watch - execute a program periodically, showing output fullscreen
 #[derive(StructOpt, Debug, Clone)]
@@ -25,39 +26,35 @@ fn main() {
     let interval = time::Duration::from_secs(args.interval);
     let status_begin = format!("Every {0}.0s: ", args.interval);
     let command = args.command.join(" ");
-    let crossterm = Crossterm::new();
-    let terminal = crossterm.terminal();
-    let cursor = crossterm.cursor();
+    let terminal = Term::stdout();
 
-    if let Ok(_alternate) = AlternateScreen::to_alternate(false) {
-        loop {
-            let output = Command::new("sh").arg("-c").arg(&command).output().unwrap();
-            let now = Local::now().format("%c").to_string();
+    loop {
+        let output = Command::new("sh").arg("-c").arg(&command).output().unwrap();
+        let now = Local::now().format("%c").to_string();
 
-            terminal.clear(ClearType::All).unwrap();
-            cursor.goto(0, 0).unwrap();
+        terminal.clear_screen().unwrap();
+        // cursor.goto(0, 0).unwrap();
 
-            let (width, _) = terminal.terminal_size();
+        let (_, width) = terminal.size_checked().unwrap();
 
-            // add spaces to allign with the right side
-            let space = String::from_utf8(vec![
-                b' ';
-                width as usize
-                    - status_begin.len()
-                    - command.len()
-                    - now.len()
-                    - 3
-            ])
+        // add spaces to allign with the right side
+        let space = String::from_utf8(vec![
+            b' ';
+            width as usize
+                - status_begin.len()
+                - command.len()
+                - now.len()
+                - 4
+        ])
+        .unwrap();
+
+        let status = format!("{0}{1}{2}{3:>28}\n\n", status_begin, &command, space, now);
+
+        terminal.write_line(&status).unwrap();
+        terminal
+            .write_line(&String::from_utf8(output.stdout).unwrap())
             .unwrap();
 
-            let status = format!("{0}{1}{2}{3:>28}\n\n", status_begin, &command, space, now);
-
-            terminal.write(status).unwrap();
-            terminal
-                .write(&String::from_utf8(output.stdout).unwrap())
-                .unwrap();
-
-            thread::sleep(interval);
-        }
+        thread::sleep(interval);
     }
 }
