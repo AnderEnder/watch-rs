@@ -23,7 +23,7 @@ pub struct WatchOpts {
 fn main() {
     let args = WatchOpts::from_args();
     let interval = time::Duration::from_secs(args.interval);
-    let interval_str = args.interval.to_string();
+    let status_begin = format!("Every {0}.0s: ", args.interval);
     let command = args.command.join(" ");
     let crossterm = Crossterm::new();
     let terminal = crossterm.terminal();
@@ -31,8 +31,10 @@ fn main() {
 
     if let Ok(_alternate) = AlternateScreen::to_alternate(false) {
         loop {
-            terminal.clear(ClearType::All).unwrap();
             let output = Command::new("sh").arg("-c").arg(&command).output().unwrap();
+            let now = Local::now().format("%c").to_string();
+
+            terminal.clear(ClearType::All).unwrap();
             cursor.goto(0, 0).unwrap();
 
             let (width, _) = terminal.terminal_size();
@@ -41,19 +43,14 @@ fn main() {
             let space = String::from_utf8(vec![
                 b' ';
                 width as usize
-                    - 23
-                    - interval_str.len()
-                    - 12
+                    - status_begin.len()
                     - command.len()
+                    - now.len()
+                    - 3
             ])
             .unwrap();
 
-            let now = Local::now().format("%c");
-
-            let status = format!(
-                "Every {0}.0s: {1} {2}{3:>28}\n\n",
-                interval_str, &command, space, now
-            );
+            let status = format!("{0}{1}{2}{3:>28}\n\n", status_begin, &command, space, now);
 
             terminal.write(status).unwrap();
             terminal
