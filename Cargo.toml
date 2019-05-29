@@ -8,3 +8,6 @@ edition = "2018"
 structopt = "0.2"
 chrono = "0.4"
 termion = "1.5.2"
+
+[profile.release]
+lto = true
