@@ -1,8 +1,14 @@
 use chrono::offset::Local;
-use crossterm::{AlternateScreen, ClearType, Crossterm};
+use std::io::{stdout, Write};
 use std::process::Command;
-use std::{thread, time};
+use std::thread;
+use std::time::Duration;
 use structopt::StructOpt;
+use termion::event::Key;
+use termion::input::TermRead;
+use termion::raw::IntoRawMode;
+use termion::screen::AlternateScreen;
+use termion::{async_stdin, clear, cursor};
 
 /// watch - execute a program periodically, showing output fullscreen
 #[derive(StructOpt, Debug, Clone)]
@@ -20,44 +26,100 @@ pub struct WatchOpts {
     command: Vec<String>,
 }
 
-fn main() {
-    let args = WatchOpts::from_args();
-    let interval = time::Duration::from_secs(args.interval);
-    let status_begin = format!("Every {0}.0s: ", args.interval);
-    let command = args.command.join(" ");
-    let crossterm = Crossterm::new();
-    let terminal = crossterm.terminal();
-    let cursor = crossterm.cursor();
+fn draw<W: Write>(
+    stdout: &mut AlternateScreen<W>,
+    status_begin: &str,
+    command: &str,
+    now: &str,
+    content: &str,
+) -> Result<(), std::io::Error> {
+    let (width, height) = termion::terminal_size().unwrap();
 
-    if let Ok(_alternate) = AlternateScreen::to_alternate(false) {
-        loop {
-            let output = Command::new("sh").arg("-c").arg(&command).output().unwrap();
-            let now = Local::now().format("%c").to_string();
+    let space = String::from_utf8(vec![
+        b' ';
+        width as usize
+            - status_begin.len()
+            - command.len()
+            - now.len()
+            - 4
+    ])
+    .unwrap();
 
-            terminal.clear(ClearType::All).unwrap();
-            cursor.goto(0, 0).unwrap();
+    let status = format!("{0}{1}{2}{3:>28}", status_begin, &command, space, now);
 
-            let (width, _) = terminal.terminal_size();
+    write!(stdout, "{}\r\n", status)?;
 
-            // add spaces to allign with the right side
-            let space = String::from_utf8(vec![
-                b' ';
-                width as usize
-                    - status_begin.len()
-                    - command.len()
-                    - now.len()
-                    - 3
-            ])
-            .unwrap();
-
-            let status = format!("{0}{1}{2}{3:>28}\n\n", status_begin, &command, space, now);
-
-            terminal.write(status).unwrap();
-            terminal
-                .write(&String::from_utf8(output.stdout).unwrap())
-                .unwrap();
-
-            thread::sleep(interval);
+    let mut n: usize = 0;
+    for out in content.lines() {
+        n += 1;
+        if n > (height - 2) as usize {
+            break;
+        }
+        if out.len() > width as usize {
+            write!(stdout, "\r\n{}", &out[0..width as usize])?
+        } else {
+            write!(stdout, "\r\n{}", out)?;
         }
     }
+
+    write!(stdout, "{}", cursor::Goto(1, 1))?;
+    stdout.flush()?;
+    Ok(())
+}
+
+fn main() -> Result<(), std::io::Error> {
+    let args = WatchOpts::from_args();
+    let status_begin = format!("Every {0}.0s: ", args.interval);
+    let command = args.command.join(" ");
+
+    let mut stdout = AlternateScreen::from(stdout().into_raw_mode()?);
+    let mut key_stream = async_stdin().keys();
+
+    'outer: loop {
+        let output = Command::new("sh").arg("-c").arg(&command).output()?;
+        let now = Local::now().format("%c").to_string();
+
+        write!(
+            stdout,
+            "{}{}{}",
+            clear::All,
+            cursor::Hide,
+            cursor::Goto(1, 1)
+        )
+        .unwrap();
+
+        let mut tsize = termion::terminal_size()?;
+
+        let content = String::from_utf8(output.stdout).unwrap();
+        draw(&mut stdout, &status_begin, &command, &now, &content)?;
+
+        let mut ctime = 0_f32;
+
+        while ctime < (args.interval as f32) {
+            if let Some(Ok(key)) = key_stream.next() {
+                match key {
+                    Key::Ctrl('c') | Key::Char('q') => {
+                        write!(
+                            stdout,
+                            "{}{}{}",
+                            clear::All,
+                            cursor::Show,
+                            cursor::Goto(1, 1)
+                        )?;
+                        break 'outer;
+                    }
+                    _ => {}
+                }
+            }
+            thread::sleep(Duration::from_millis(10));
+            ctime += 0.010;
+
+            let csize = termion::terminal_size()?;
+            if tsize != csize {
+                tsize = csize;
+                draw(&mut stdout, &status_begin, &command, &now, &content)?;
+            }
+        }
+    }
+    Ok(())
 }
