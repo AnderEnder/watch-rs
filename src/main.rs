@@ -1,4 +1,5 @@
 use chrono::offset::Local;
+use std::cmp::min;
 use std::io::{stdout, Write};
 use std::process::Command;
 use std::thread;
@@ -21,7 +22,8 @@ pub struct WatchOpts {
     #[structopt(long = "no-title", short = "t")]
     no_title: bool,
     #[structopt(long = "interval", short = "n", default_value = "2")]
-    interval: u64,
+    /// Interval
+    interval: f32,
     #[structopt(name = "command", raw(min_values = "1"))]
     command: Vec<String>,
 }
@@ -47,12 +49,10 @@ fn draw<W: Write>(
 
     let status = format!("{0}{1}{2}{3:>28}", status_begin, &command, space, now);
 
-    write!(stdout, "{}\r\n", status)?;
+    writeln!(stdout, "{}\r", status)?;
 
-    let mut n: usize = 0;
-    for out in content.lines() {
-        n += 1;
-        if n > (height - 2) as usize {
+    for (n, out) in content.lines().enumerate() {
+        if n > (height - 3) as usize {
             break;
         }
         if out.len() > width as usize {
@@ -69,11 +69,14 @@ fn draw<W: Write>(
 
 fn main() -> Result<(), std::io::Error> {
     let args = WatchOpts::from_args();
-    let status_begin = format!("Every {0}.0s: ", args.interval);
+    let status_begin = format!("Every {:.2}s: ", args.interval);
     let command = args.command.join(" ");
 
     let mut stdout = AlternateScreen::from(stdout().into_raw_mode()?);
     let mut key_stream = async_stdin().keys();
+
+    let delta_ms = min(10, (args.interval * 1000_f32) as u64 / 4);
+    let delta = delta_ms as f32 / 1000_f32;
 
     'outer: loop {
         let output = Command::new("sh").arg("-c").arg(&command).output()?;
@@ -111,8 +114,9 @@ fn main() -> Result<(), std::io::Error> {
                     _ => {}
                 }
             }
-            thread::sleep(Duration::from_millis(10));
-            ctime += 0.010;
+
+            thread::sleep(Duration::from_millis(delta_ms));
+            ctime += delta;
 
             let csize = termion::terminal_size()?;
             if tsize != csize {
