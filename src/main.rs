@@ -1,5 +1,6 @@
 use chrono::offset::Local;
 use std::cmp::min;
+use std::io;
 use std::io::{stdout, Write};
 use std::process::Command;
 use std::thread;
@@ -35,7 +36,7 @@ fn draw<W: Write>(
     now: &str,
     content: &str,
 ) -> Result<(), std::io::Error> {
-    let (width, height) = termion::terminal_size().unwrap();
+    let (width, height) = termion::terminal_size()?;
 
     let space = String::from_utf8(vec![
         b' ';
@@ -45,7 +46,7 @@ fn draw<W: Write>(
             - now.len()
             - 4
     ])
-    .unwrap();
+    .map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))?;
 
     let status = format!("{0}{1}{2}{3:>28}", status_begin, &command, space, now);
 
@@ -88,12 +89,13 @@ fn main() -> Result<(), std::io::Error> {
             clear::All,
             cursor::Hide,
             cursor::Goto(1, 1)
-        )
-        .unwrap();
+        )?;
 
         let mut tsize = termion::terminal_size()?;
 
-        let content = String::from_utf8(output.stdout).unwrap();
+        let content = String::from_utf8(output.stdout)
+            .map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))?;
+
         draw(&mut stdout, &status_begin, &command, &now, &content)?;
 
         let mut ctime = 0_f32;
