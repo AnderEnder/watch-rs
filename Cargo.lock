@@ -14,7 +14,7 @@ version = "0.2.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 dependencies = [
  "libc 0.2.53 (registry+https://github.com/rust-lang/crates.io-index)",
- "termion 1.5.2 (registry+https://github.com/rust-lang/crates.io-index)",
+ "termion 1.5.5 (registry+https://github.com/rust-lang/crates.io-index)",
  "winapi 0.3.7 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 
@@ -144,7 +144,7 @@ dependencies = [
 
 [[package]]
 name = "termion"
-version = "1.5.2"
+version = "1.5.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 dependencies = [
  "libc 0.2.53 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -197,7 +197,7 @@ version = "0.1.0"
 dependencies = [
  "chrono 0.4.6 (registry+https://github.com/rust-lang/crates.io-index)",
  "structopt 0.2.15 (registry+https://github.com/rust-lang/crates.io-index)",
- "termion 1.5.2 (registry+https://github.com/rust-lang/crates.io-index)",
+ "termion 1.5.5 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 
 [[package]]
@@ -238,7 +238,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 "checksum structopt 0.2.15 (registry+https://github.com/rust-lang/crates.io-index)" = "3d0760c312538987d363c36c42339b55f5ee176ea8808bbe4543d484a291c8d1"
 "checksum structopt-derive 0.2.15 (registry+https://github.com/rust-lang/crates.io-index)" = "528aeb7351d042e6ffbc2a6fb76a86f9b622fdf7c25932798e7a82cb03bc94c6"
 "checksum syn 0.15.33 (registry+https://github.com/rust-lang/crates.io-index)" = "ec52cd796e5f01d0067225a5392e70084acc4c0013fa71d55166d38a8b307836"
-"checksum termion 1.5.2 (registry+https://github.com/rust-lang/crates.io-index)" = "dde0593aeb8d47accea5392b39350015b5eccb12c0d98044d856983d89548dea"
+"checksum termion 1.5.5 (registry+https://github.com/rust-lang/crates.io-index)" = "c22cec9d8978d906be5ac94bceb5a010d885c626c4c8855721a4dbd20e3ac905"
 "checksum textwrap 0.11.0 (registry+https://github.com/rust-lang/crates.io-index)" = "d326610f408c7a4eb6f51c37c330e496b08506c9457c9d34287ecc38809fb060"
 "checksum time 0.1.42 (registry+https://github.com/rust-lang/crates.io-index)" = "db8dcfca086c1143c9270ac42a2bbd8a7ee477b78ac8e45b19abfb0cbede4b6f"
 "checksum unicode-segmentation 1.2.1 (registry+https://github.com/rust-lang/crates.io-index)" = "aa6024fc12ddfd1c6dbc14a80fa2324d4568849869b779f6bd37e5e4c03344d1"
