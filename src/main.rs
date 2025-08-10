@@ -10,7 +10,7 @@ use termion::event::Key;
 use termion::input::TermRead;
 use termion::raw::IntoRawMode;
 use termion::screen::{AlternateScreen, IntoAlternateScreen};
-use termion::{async_stdin, clear, cursor};
+use termion::{async_stdin, clear, color, cursor};
 
 /// watch - execute a program periodically, showing output fullscreen
 #[derive(Parser, Debug, Clone)]
@@ -29,12 +29,54 @@ pub struct WatchOpts {
     command: Vec<String>,
 }
 
+/// Compare two strings and return the new content with differences highlighted
+fn highlight_differences(old_content: &str, new_content: &str) -> String {
+    if old_content == new_content {
+        return new_content.to_string();
+    }
+
+    let old_lines: Vec<&str> = old_content.lines().collect();
+    let new_lines: Vec<&str> = new_content.lines().collect();
+    let mut result = Vec::new();
+
+    let max_lines = std::cmp::max(old_lines.len(), new_lines.len());
+
+    for i in 0..max_lines {
+        let old_line = old_lines.get(i).copied().unwrap_or("");
+        let new_line = new_lines.get(i).copied().unwrap_or("");
+
+        if old_line != new_line {
+            // Highlight the entire changed line in red
+            result.push(format!(
+                "{}{}{}",
+                color::Fg(color::Red),
+                new_line,
+                color::Fg(color::Reset)
+            ));
+        } else {
+            result.push(new_line.to_string());
+        }
+    }
+
+    result.join("\n")
+}
+
+/// Accumulate new content with previous content
+fn accumulate_content(old_content: &str, new_content: &str) -> String {
+    if old_content.is_empty() {
+        new_content.to_string()
+    } else {
+        format!("{}\n{}", old_content, new_content)
+    }
+}
+
 fn draw<W: Write>(
     stdout: &mut AlternateScreen<W>,
     status_begin: &str,
     command: &str,
     now: &str,
     content: &str,
+    no_title: bool,
 ) -> Result<(), std::io::Error> {
     let (width, height) = termion::terminal_size()?;
 
@@ -48,18 +90,22 @@ fn draw<W: Write>(
     ])
     .map_err(|e| io::Error::other(e.to_string()))?;
 
-    let status = format!("{0}{1}{2}{3:>28}", status_begin, &command, space, now);
+    if !no_title {
+        let status = format!("{0}{1}{2}{3:>28}", status_begin, &command, space, now);
+        writeln!(stdout, "{}\r", status)?;
+    }
 
-    writeln!(stdout, "{}\r", status)?;
+    let available_height = if no_title { height } else { height - 2 };
 
     for (n, out) in content.lines().enumerate() {
-        if n > (height - 3) as usize {
+        if n >= available_height as usize {
             break;
         }
+        let line_prefix = if no_title && n == 0 { "\r" } else { "\r\n" };
         if out.len() > width as usize {
-            write!(stdout, "\r\n{}", &out[0..width as usize])?
+            write!(stdout, "{}{}", line_prefix, &out[0..width as usize])?
         } else {
-            write!(stdout, "\r\n{}", out)?;
+            write!(stdout, "{}{}", line_prefix, out)?;
         }
     }
 
@@ -79,6 +125,9 @@ fn main() -> Result<(), std::io::Error> {
     let delta_ms = min(10, (args.interval * 1000_f32) as u64 / 4);
     let delta = delta_ms as f32 / 1000_f32;
 
+    let mut previous_content = String::new();
+    let mut cumulative_content = String::new();
+
     'outer: loop {
         let output = Command::new("sh").arg("-c").arg(&command).output()?;
         let now = Local::now().format("%c").to_string();
@@ -93,10 +142,35 @@ fn main() -> Result<(), std::io::Error> {
 
         let mut tsize = termion::terminal_size()?;
 
-        let content =
+        let raw_content =
             String::from_utf8(output.stdout).map_err(|e| io::Error::other(e.to_string()))?;
 
-        draw(&mut stdout, &status_begin, &command, &now, &content)?;
+        // Process content based on flags
+        let display_content = if args.cumulative {
+            let old_cumulative = cumulative_content.clone();
+            cumulative_content = accumulate_content(&cumulative_content, &raw_content);
+            if args.difference {
+                highlight_differences(&old_cumulative, &cumulative_content)
+            } else {
+                cumulative_content.clone()
+            }
+        } else if args.difference {
+            let highlighted = highlight_differences(&previous_content, &raw_content);
+            previous_content = raw_content;
+            highlighted
+        } else {
+            previous_content = raw_content.clone(); // Store for potential difference highlighting
+            raw_content
+        };
+
+        draw(
+            &mut stdout,
+            &status_begin,
+            &command,
+            &now,
+            &display_content,
+            args.no_title,
+        )?;
 
         let mut ctime = 0_f32;
 
@@ -121,7 +195,14 @@ fn main() -> Result<(), std::io::Error> {
             let csize = termion::terminal_size()?;
             if tsize != csize {
                 tsize = csize;
-                draw(&mut stdout, &status_begin, &command, &now, &content)?;
+                draw(
+                    &mut stdout,
+                    &status_begin,
+                    &command,
+                    &now,
+                    &display_content,
+                    args.no_title,
+                )?;
             }
         }
     }
