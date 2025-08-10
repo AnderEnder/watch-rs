@@ -1,31 +1,31 @@
 use chrono::offset::Local;
+use clap::Parser;
 use std::cmp::min;
 use std::io;
 use std::io::{stdout, Write};
 use std::process::Command;
 use std::thread;
 use std::time::Duration;
-use structopt::StructOpt;
 use termion::event::Key;
 use termion::input::TermRead;
 use termion::raw::IntoRawMode;
-use termion::screen::AlternateScreen;
+use termion::screen::{AlternateScreen, IntoAlternateScreen};
 use termion::{async_stdin, clear, cursor};
 
 /// watch - execute a program periodically, showing output fullscreen
-#[derive(StructOpt, Debug, Clone)]
-#[structopt(name = "watch")]
+#[derive(Parser, Debug, Clone)]
+#[command(name = "watch")]
 pub struct WatchOpts {
-    #[structopt(long = "difference", short = "d")]
+    #[arg(long = "difference", short = 'd')]
     difference: bool,
-    #[structopt(long = "cumulative", short = "c")]
+    #[arg(long = "cumulative", short = 'c')]
     cumulative: bool,
-    #[structopt(long = "no-title", short = "t")]
+    #[arg(long = "no-title", short = 't')]
     no_title: bool,
-    #[structopt(long = "interval", short = "n", default_value = "2")]
+    #[arg(long = "interval", short = 'n', default_value = "2")]
     /// Interval
     interval: f32,
-    #[structopt(name = "command", raw(min_values = "1"))]
+    #[arg(required = true)]
     command: Vec<String>,
 }
 
@@ -46,7 +46,7 @@ fn draw<W: Write>(
             - now.len()
             - 4
     ])
-    .map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))?;
+    .map_err(|e| io::Error::other(e.to_string()))?;
 
     let status = format!("{0}{1}{2}{3:>28}", status_begin, &command, space, now);
 
@@ -69,11 +69,11 @@ fn draw<W: Write>(
 }
 
 fn main() -> Result<(), std::io::Error> {
-    let args = WatchOpts::from_args();
+    let args = WatchOpts::parse();
     let status_begin = format!("Every {:.2}s: ", args.interval);
     let command = args.command.join(" ");
 
-    let mut stdout = AlternateScreen::from(stdout().into_raw_mode()?);
+    let mut stdout = stdout().into_raw_mode()?.into_alternate_screen()?;
     let mut key_stream = async_stdin().keys();
 
     let delta_ms = min(10, (args.interval * 1000_f32) as u64 / 4);
@@ -93,28 +93,26 @@ fn main() -> Result<(), std::io::Error> {
 
         let mut tsize = termion::terminal_size()?;
 
-        let content = String::from_utf8(output.stdout)
-            .map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))?;
+        let content =
+            String::from_utf8(output.stdout).map_err(|e| io::Error::other(e.to_string()))?;
 
         draw(&mut stdout, &status_begin, &command, &now, &content)?;
 
         let mut ctime = 0_f32;
 
-        while ctime < (args.interval as f32) {
-            if let Some(Ok(key)) = key_stream.next() {
-                match key {
-                    Key::Ctrl('c') | Key::Char('q') => {
-                        write!(
-                            stdout,
-                            "{}{}{}",
-                            clear::All,
-                            cursor::Show,
-                            cursor::Goto(1, 1)
-                        )?;
-                        break 'outer;
-                    }
-                    _ => {}
+        while ctime < args.interval {
+            match key_stream.next() {
+                Some(Ok(Key::Ctrl('c'))) | Some(Ok(Key::Char('q'))) => {
+                    write!(
+                        stdout,
+                        "{}{}{}",
+                        clear::All,
+                        cursor::Show,
+                        cursor::Goto(1, 1)
+                    )?;
+                    break 'outer;
                 }
+                _ => {}
             }
 
             thread::sleep(Duration::from_millis(delta_ms));
