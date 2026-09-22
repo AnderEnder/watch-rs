@@ -9,6 +9,7 @@ A Rust implementation of the classic Unix `watch` utility that executes programs
 - Real-time keyboard input handling (Ctrl+C or 'q' to quit)
 - Dynamic terminal resizing support
 - Command output display with timestamp and interval information
+- Captured stderr displayed after stdout, with an explicit message for unsuccessful exit status
 
 ## Dependencies
 
