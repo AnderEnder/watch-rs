@@ -2,7 +2,7 @@ use chrono::offset::Local;
 use clap::Parser;
 use std::cmp::min;
 use std::io;
-use std::io::{stdout, Write};
+use std::io::{Write, stdout};
 use std::process::Command;
 use std::thread;
 use std::time::Duration;
@@ -80,22 +80,26 @@ fn draw<W: Write>(
 ) -> Result<(), std::io::Error> {
     let (width, height) = termion::terminal_size()?;
 
-    let space = String::from_utf8(vec![
-        b' ';
-        width as usize
-            - status_begin.len()
-            - command.len()
-            - now.len()
-            - 4
-    ])
-    .map_err(|e| io::Error::other(e.to_string()))?;
-
-    if !no_title {
-        let status = format!("{0}{1}{2}{3:>28}", status_begin, &command, space, now);
-        writeln!(stdout, "{}\r", status)?;
+    if width == 0 || height == 0 {
+        return stdout.flush();
     }
 
-    let available_height = if no_title { height } else { height - 2 };
+    if !no_title {
+        let title = format!("{status_begin}{command}");
+        let padding = (width as usize).saturating_sub(title.len() + now.len() + 1);
+        let status = format!("{title}{}{now}", " ".repeat(padding));
+        let status: String = status.chars().take(width as usize).collect();
+        write!(stdout, "{status}\r")?;
+        if height > 1 {
+            writeln!(stdout)?;
+        }
+    }
+
+    let available_height = if no_title {
+        height
+    } else {
+        height.saturating_sub(2)
+    };
 
     for (n, out) in content.lines().enumerate() {
         if n >= available_height as usize {
