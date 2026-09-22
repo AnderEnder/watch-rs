@@ -59,3 +59,7 @@ Single-file Rust application that:
 - Implements terminal UI using termion's alternate screen and raw mode
 - Executes shell commands via `sh -c` 
 - Handles real-time input and display updates in a main event loop
+
+## Testing
+
+Run `cargo test`. Terminal regression tests require Python 3 and a Unix pseudo-terminal; they use only the Python standard library.
