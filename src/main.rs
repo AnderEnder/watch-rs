@@ -1,11 +1,12 @@
 mod display;
+mod running_command;
 
 use chrono::offset::Local;
 use clap::Parser;
+use running_command::RunningCommand;
 use std::cmp::min;
 use std::io;
 use std::io::{Write, stdout};
-use std::process::Command;
 use std::thread;
 use std::time::Duration;
 use termion::event::Key;
@@ -126,7 +127,7 @@ fn main() -> Result<(), std::io::Error> {
     let status_begin = format!("Every {:.2}s: ", args.interval);
     let command = args.command.join(" ");
 
-    let mut stdout = stdout().into_raw_mode()?.into_alternate_screen()?;
+    let mut stdout = cursor::HideCursor::from(stdout().into_raw_mode()?).into_alternate_screen()?;
     let mut key_stream = async_stdin().keys();
 
     let delta_ms = min(10, (args.interval * 1000_f32) as u64 / 4);
@@ -134,9 +135,44 @@ fn main() -> Result<(), std::io::Error> {
 
     let mut previous_content = String::new();
     let mut cumulative_content = String::new();
+    let mut last_display = String::new();
 
     'outer: loop {
-        let output = Command::new("sh").arg("-c").arg(&command).output()?;
+        let mut running = RunningCommand::spawn(&command)?;
+        let now = Local::now().format("%c").to_string();
+        write!(stdout, "{}{}", clear::All, cursor::Goto(1, 1))?;
+        draw(
+            &mut stdout,
+            &status_begin,
+            &command,
+            &now,
+            &last_display,
+            args.no_title,
+        )?;
+        let mut running_size = termion::terminal_size()?;
+        let output = loop {
+            match key_stream.next() {
+                Some(Ok(Key::Ctrl('c'))) | Some(Ok(Key::Char('q'))) => break 'outer,
+                _ => {}
+            }
+            if let Some(output) = running.poll()? {
+                break output;
+            }
+            let size = termion::terminal_size()?;
+            if size != running_size {
+                running_size = size;
+                write!(stdout, "{}{}", clear::All, cursor::Goto(1, 1))?;
+                draw(
+                    &mut stdout,
+                    &status_begin,
+                    &command,
+                    &now,
+                    &last_display,
+                    args.no_title,
+                )?;
+            }
+            thread::sleep(Duration::from_millis(10));
+        };
         let now = Local::now().format("%c").to_string();
 
         write!(
@@ -178,6 +214,8 @@ fn main() -> Result<(), std::io::Error> {
             &display_content,
             args.no_title,
         )?;
+
+        last_display = display_content.clone();
 
         let mut ctime = 0_f32;
 
