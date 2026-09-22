@@ -77,7 +77,7 @@ fn draw<W: Write>(
     now: &str,
     content: &str,
     no_title: bool,
-) -> Result<(), std::io::Error> {
+) -> io::Result<()> {
     let (width, height) = termion::terminal_size()?;
 
     if width == 0 || height == 0 {
@@ -118,7 +118,9 @@ fn draw<W: Write>(
     Ok(())
 }
 
-fn main() -> Result<(), std::io::Error> {
+mod command_output;
+
+fn main() -> io::Result<()> {
     let args = WatchOpts::parse();
     let status_begin = format!("Every {:.2}s: ", args.interval);
     let command = args.command.join(" ");
@@ -146,8 +148,7 @@ fn main() -> Result<(), std::io::Error> {
 
         let mut tsize = termion::terminal_size()?;
 
-        let raw_content =
-            String::from_utf8(output.stdout).map_err(|e| io::Error::other(e.to_string()))?;
+        let raw_content = command_output::format_output(&output);
 
         // Process content based on flags
         let display_content = if args.cumulative {
