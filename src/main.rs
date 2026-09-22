@@ -27,7 +27,7 @@ pub struct WatchOpts {
     #[arg(long = "interval", short = 'n', default_value = "2", value_parser = parse_interval)]
     /// Interval
     interval: Duration,
-    #[arg(required = true)]
+    #[arg(required = true, trailing_var_arg = true, allow_hyphen_values = true)]
     command: Vec<String>,
 }
 
@@ -264,3 +264,6 @@ fn main() -> Result<(), std::io::Error> {
     }
     Ok(())
 }
+
+#[cfg(test)]
+mod cli_tests;
