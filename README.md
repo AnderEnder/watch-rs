@@ -13,9 +13,9 @@ A Rust implementation of the classic Unix `watch` utility that executes programs
 
 ## Dependencies
 
-- **clap 4.0**: Modern command-line argument parsing
-- **chrono 0.4**: Date and time handling for timestamps
-- **termion 4**: Terminal I/O and raw mode handling
+- **clap 4.6.7**: Modern command-line argument parsing
+- **chrono 0.4.45**: Date and time handling for timestamps
+- **termion 4.0.6**: Terminal I/O and raw mode handling
 
 ## Building
 

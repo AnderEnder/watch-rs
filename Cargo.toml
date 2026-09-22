@@ -5,9 +5,9 @@ authors = ["ander <ander.ender@gmail.com>"]
 edition = "2024"
 
 [dependencies]
-clap = { version = "4.0", features = ["derive"] }
-chrono = "0.4"
-termion = "4"
+clap = { version = "4.6.7", features = ["derive"] }
+chrono = "0.4.45"
+termion = "4.0.6"
 unicode-width = "0.2.2"
 unicode-segmentation = "1.13.3"
 libc = "0.2"
