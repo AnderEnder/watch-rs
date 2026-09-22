@@ -1,3 +1,5 @@
+mod display;
+
 use chrono::offset::Local;
 use clap::Parser;
 use std::cmp::min;
@@ -106,11 +108,12 @@ fn draw<W: Write>(
             break;
         }
         let line_prefix = if no_title && n == 0 { "\r" } else { "\r\n" };
-        if out.len() > width as usize {
-            write!(stdout, "{}{}", line_prefix, &out[0..width as usize])?
-        } else {
-            write!(stdout, "{}{}", line_prefix, out)?;
-        }
+        write!(
+            stdout,
+            "{}{}",
+            line_prefix,
+            display::clip_line(out, width as usize)
+        )?;
     }
 
     write!(stdout, "{}", cursor::Goto(1, 1))?;
