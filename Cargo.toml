@@ -8,6 +8,8 @@ edition = "2024"
 clap = { version = "4.0", features = ["derive"] }
 chrono = "0.4"
 termion = "4"
+unicode-width = "0.2.2"
+unicode-segmentation = "1.13.3"
 
 [profile.release]
 lto = true
