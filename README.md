@@ -41,7 +41,7 @@ cargo run -- --help
 
 ## Command-line Options
 
-- `-n, --interval <INTERVAL>`: Set execution interval in seconds (default: 2)
+- `-n, --interval <INTERVAL>`: Set execution interval in seconds (default: 2; must be finite, positive, and representable with nanosecond precision)
 - `-d, --difference`: Highlight differences between updates
 - `-c, --cumulative`: Cumulative mode
 - `-t, --no-title`: Disable title display

@@ -4,11 +4,10 @@ mod running_command;
 use chrono::offset::Local;
 use clap::Parser;
 use running_command::RunningCommand;
-use std::cmp::min;
 use std::io;
 use std::io::{Write, stdout};
 use std::thread;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 use termion::event::Key;
 use termion::input::TermRead;
 use termion::raw::IntoRawMode;
@@ -25,11 +24,23 @@ pub struct WatchOpts {
     cumulative: bool,
     #[arg(long = "no-title", short = 't')]
     no_title: bool,
-    #[arg(long = "interval", short = 'n', default_value = "2")]
+    #[arg(long = "interval", short = 'n', default_value = "2", value_parser = parse_interval)]
     /// Interval
-    interval: f32,
+    interval: Duration,
     #[arg(required = true)]
     command: Vec<String>,
+}
+
+fn parse_interval(value: &str) -> Result<Duration, String> {
+    let seconds: f64 = value
+        .parse()
+        .map_err(|_| "interval must be a number".to_string())?;
+    let duration = Duration::try_from_secs_f64(seconds)
+        .map_err(|_| "interval must be finite, positive, and representable".to_string())?;
+    if duration.is_zero() {
+        return Err("interval must be positive and at least one nanosecond".to_string());
+    }
+    Ok(duration)
 }
 
 /// Compare two strings and return the new content with differences highlighted
@@ -124,14 +135,11 @@ fn draw<W: Write>(
 
 fn main() -> Result<(), std::io::Error> {
     let args = WatchOpts::parse();
-    let status_begin = format!("Every {:.2}s: ", args.interval);
+    let status_begin = format!("Every {:.2}s: ", args.interval.as_secs_f64());
     let command = args.command.join(" ");
 
     let mut stdout = cursor::HideCursor::from(stdout().into_raw_mode()?).into_alternate_screen()?;
     let mut key_stream = async_stdin().keys();
-
-    let delta_ms = min(10, (args.interval * 1000_f32) as u64 / 4);
-    let delta = delta_ms as f32 / 1000_f32;
 
     let mut previous_content = String::new();
     let mut cumulative_content = String::new();
@@ -217,9 +225,9 @@ fn main() -> Result<(), std::io::Error> {
 
         last_display = display_content.clone();
 
-        let mut ctime = 0_f32;
+        let started = Instant::now();
 
-        while ctime < args.interval {
+        loop {
             match key_stream.next() {
                 Some(Ok(Key::Ctrl('c'))) | Some(Ok(Key::Char('q'))) => {
                     write!(
@@ -234,8 +242,11 @@ fn main() -> Result<(), std::io::Error> {
                 _ => {}
             }
 
-            thread::sleep(Duration::from_millis(delta_ms));
-            ctime += delta;
+            let elapsed = started.elapsed();
+            if elapsed >= args.interval {
+                break;
+            }
+            thread::sleep(Duration::from_millis(10).min(args.interval - elapsed));
 
             let csize = termion::terminal_size()?;
             if tsize != csize {
