@@ -39,6 +39,8 @@ cargo run -- -n 5 "ps aux | grep rust"
 cargo run -- --help
 ```
 
+Place watch options before the command. All arguments after the command, including flags such as `-la` and `--help`, are passed to the watched command.
+
 ## Command-line Options
 
 - `-n, --interval <INTERVAL>`: Set execution interval in seconds (default: 2; must be finite, positive, and representable with nanosecond precision)
