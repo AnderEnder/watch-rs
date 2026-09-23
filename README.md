@@ -10,6 +10,7 @@ A Rust implementation of the classic Unix `watch` utility that executes programs
 - Dynamic terminal resizing support
 - Command output display with timestamp and interval information
 - Captured stderr displayed after stdout, with an explicit message for unsuccessful exit status
+- Captured stdout and stderr are limited to 1 MiB each; excess bytes are drained and truncation is reported on screen
 
 ## Dependencies
 
