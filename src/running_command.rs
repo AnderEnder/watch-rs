@@ -1,11 +1,20 @@
 use std::io::{self, Read};
-use std::os::unix::process::CommandExt;
+use std::os::unix::process::{CommandExt, ExitStatusExt};
 use std::process::{Child, Command, ExitStatus, Stdio};
 use std::sync::mpsc::{self, Receiver, TryRecvError};
 use std::thread;
 
-/// Own the shell's process group until its output has been collected or cancelled.
+/// Own the command's process group until its output has been collected or cancelled.
 pub struct RunningCommand {
+    state: CommandState,
+}
+
+enum CommandState {
+    Running(ActiveProcess),
+    Ready(Option<CapturedOutput>),
+}
+
+struct ActiveProcess {
     child: Child,
     stdout: Receiver<io::Result<CapturedPipe>>,
     stderr: Receiver<io::Result<CapturedPipe>>,
@@ -73,30 +82,79 @@ fn collect(
 }
 
 impl RunningCommand {
-    pub fn spawn(command: &str) -> io::Result<Self> {
-        let mut child = Command::new("sh")
-            .args(["-c", command])
+    /// One CLI argument is a shell command string; multiple arguments are a program and its argv.
+    pub fn spawn(command: &[String]) -> io::Result<Self> {
+        let Some((program, arguments)) = command.split_first() else {
+            return Err(io::Error::new(io::ErrorKind::InvalidInput, "empty command"));
+        };
+        let mut process = if arguments.is_empty() {
+            let mut shell = Command::new("sh");
+            shell.arg("-c").arg(program);
+            shell
+        } else {
+            let mut executable = Command::new(program);
+            executable.args(arguments);
+            executable
+        };
+        let child = process
             .stdin(Stdio::null())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .process_group(0)
-            .spawn()?;
+            .spawn();
+        let mut child = match child {
+            Ok(child) => child,
+            Err(error)
+                if !arguments.is_empty()
+                    && matches!(
+                        error.kind(),
+                        io::ErrorKind::NotFound | io::ErrorKind::PermissionDenied
+                    ) =>
+            {
+                let code = if error.kind() == io::ErrorKind::NotFound {
+                    127
+                } else {
+                    126
+                };
+                return Ok(Self {
+                    state: CommandState::Ready(Some(CapturedOutput {
+                        status: ExitStatus::from_raw(code << 8),
+                        stdout: Vec::new(),
+                        stderr: format!("{program}: {error}\n").into_bytes(),
+                        stdout_truncated: false,
+                        stderr_truncated: false,
+                    })),
+                });
+            }
+            Err(error) => return Err(error),
+        };
         let stdout = read_pipe(child.stdout.take().expect("stdout is piped"));
         let stderr = read_pipe(child.stderr.take().expect("stderr is piped"));
         Ok(Self {
-            child,
-            stdout,
-            stderr,
-            stdout_output: None,
-            stderr_output: None,
-            finished: false,
+            state: CommandState::Running(ActiveProcess {
+                child,
+                stdout,
+                stderr,
+                stdout_output: None,
+                stderr_output: None,
+                finished: false,
+            }),
         })
     }
 
     pub fn poll(&mut self) -> io::Result<Option<CapturedOutput>> {
+        match &mut self.state {
+            CommandState::Running(process) => process.poll(),
+            CommandState::Ready(output) => Ok(output.take()),
+        }
+    }
+}
+
+impl ActiveProcess {
+    fn poll(&mut self) -> io::Result<Option<CapturedOutput>> {
         collect(&self.stdout, &mut self.stdout_output)?;
         collect(&self.stderr, &mut self.stderr_output)?;
-        // Keep the shell unreaped while descendants still hold the pipes. This
+        // Keep the child unreaped while descendants still hold the pipes. This
         // also keeps its process-group ID reserved until cancellation is safe.
         if self.stdout_output.is_none() || self.stderr_output.is_none() {
             return Ok(None);
@@ -117,7 +175,7 @@ impl RunningCommand {
     }
 }
 
-impl Drop for RunningCommand {
+impl Drop for ActiveProcess {
     fn drop(&mut self) {
         if !self.finished {
             // SAFETY: the child leads a separate process group created above;
@@ -137,9 +195,9 @@ mod tests {
 
     #[test]
     fn large_streams_are_bounded_and_report_truncation() {
-        let mut running = RunningCommand::spawn(
+        let mut running = RunningCommand::spawn(&[String::from(
             "python3 -c 'import sys; sys.stdout.buffer.write(b\"x\" * 1200000); sys.stderr.buffer.write(b\"y\" * 1200000)'",
-        )
+        )])
         .unwrap();
         let deadline = Instant::now() + Duration::from_secs(5);
         let output = loop {

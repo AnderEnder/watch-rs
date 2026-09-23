@@ -41,7 +41,7 @@ cargo run -- -n 5 "ps aux | grep rust"
 cargo run -- --help
 ```
 
-Place watch options before the command. All arguments after the command, including flags such as `-la` and `--help`, are passed to the watched command.
+Place watch options before the command. With multiple command arguments, watch runs the first as a program and passes the remaining arguments unchanged, including flags such as `-la` and `--help`. A single quoted command string runs through `sh -c`; use that form for pipelines, environment assignments, and other shell syntax.
 
 ## Command-line Options
 
@@ -58,10 +58,10 @@ Place watch options before the command. All arguments after the command, includi
 
 ## Architecture
 
-Single-file Rust application that:
+Rust application that:
 - Uses clap for argument parsing with derive macros
 - Implements terminal UI using termion's alternate screen and raw mode
-- Executes shell commands via `sh -c` 
+- Runs a single command string as shell syntax, or executes multiple command words with their argument boundaries preserved
 - Handles real-time input and display updates in a main event loop
 
 ## Testing

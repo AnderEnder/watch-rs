@@ -27,7 +27,12 @@ pub struct WatchOpts {
     #[arg(long = "interval", short = 'n', default_value = "2", value_parser = parse_interval)]
     /// Interval
     interval: Duration,
-    #[arg(required = true, trailing_var_arg = true, allow_hyphen_values = true)]
+    #[arg(
+        required = true,
+        trailing_var_arg = true,
+        allow_hyphen_values = true,
+        help = "Shell command string, or program followed by arguments"
+    )]
     command: Vec<String>,
 }
 
@@ -148,7 +153,7 @@ fn main() -> io::Result<()> {
     let mut last_display = String::new();
 
     'outer: loop {
-        let mut running = RunningCommand::spawn(&command)?;
+        let mut running = RunningCommand::spawn(&args.command)?;
         let now = Local::now().format("%c").to_string();
         write!(stdout, "{}{}", clear::All, cursor::Goto(1, 1))?;
         draw(
