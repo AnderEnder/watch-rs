@@ -1,5 +1,6 @@
 mod display;
 mod running_command;
+mod watch_state;
 
 use chrono::offset::Local;
 use clap::Parser;
@@ -12,7 +13,8 @@ use termion::event::Key;
 use termion::input::TermRead;
 use termion::raw::IntoRawMode;
 use termion::screen::{AlternateScreen, IntoAlternateScreen};
-use termion::{async_stdin, clear, color, cursor};
+use termion::{async_stdin, clear, cursor};
+use watch_state::{Frame, WatchState};
 
 /// watch - execute a program periodically, showing output fullscreen
 #[derive(Parser, Debug, Clone)]
@@ -48,94 +50,23 @@ fn parse_interval(value: &str) -> Result<Duration, String> {
     Ok(duration)
 }
 
-/// Compare two strings and return the new content with differences highlighted
-fn highlight_differences(old_content: &str, new_content: &str) -> String {
-    if old_content == new_content {
-        return new_content.to_string();
-    }
-
-    let old_lines: Vec<&str> = old_content.lines().collect();
-    let new_lines: Vec<&str> = new_content.lines().collect();
-    let mut result = Vec::new();
-
-    let max_lines = std::cmp::max(old_lines.len(), new_lines.len());
-
-    for i in 0..max_lines {
-        let old_line = old_lines.get(i).copied().unwrap_or("");
-        let new_line = new_lines.get(i).copied().unwrap_or("");
-
-        if old_line != new_line {
-            // Highlight the entire changed line in red
-            result.push(format!(
-                "{}{}{}",
-                color::Fg(color::Red),
-                new_line,
-                color::Fg(color::Reset)
-            ));
-        } else {
-            result.push(new_line.to_string());
-        }
-    }
-
-    result.join("\n")
-}
-
-/// Accumulate new content with previous content
-fn accumulate_content(old_content: &str, new_content: &str) -> String {
-    if old_content.is_empty() {
-        new_content.to_string()
-    } else {
-        format!("{}\n{}", old_content, new_content)
-    }
-}
-
 fn draw<W: Write>(
     stdout: &mut AlternateScreen<W>,
     status_begin: &str,
     command: &str,
     now: &str,
-    content: &str,
+    frame: &Frame,
     no_title: bool,
 ) -> io::Result<()> {
-    let (width, height) = termion::terminal_size()?;
-
-    if width == 0 || height == 0 {
-        return stdout.flush();
-    }
-
-    if !no_title {
-        let title = format!("{status_begin}{command}");
-        let padding = (width as usize).saturating_sub(title.len() + now.len() + 1);
-        let status = format!("{title}{}{now}", " ".repeat(padding));
-        let status: String = status.chars().take(width as usize).collect();
-        write!(stdout, "{status}\r")?;
-        if height > 1 {
-            writeln!(stdout)?;
-        }
-    }
-
-    let available_height = if no_title {
-        height
-    } else {
-        height.saturating_sub(2)
-    };
-
-    for (n, out) in content.lines().enumerate() {
-        if n >= available_height as usize {
-            break;
-        }
-        let line_prefix = if no_title && n == 0 { "\r" } else { "\r\n" };
-        write!(
-            stdout,
-            "{}{}",
-            line_prefix,
-            display::clip_line(out, width as usize)
-        )?;
-    }
-
-    write!(stdout, "{}", cursor::Goto(1, 1))?;
-    stdout.flush()?;
-    Ok(())
+    display::render(
+        stdout,
+        termion::terminal_size()?,
+        status_begin,
+        command,
+        now,
+        frame,
+        no_title,
+    )
 }
 
 mod command_output;
@@ -148,9 +79,7 @@ fn main() -> io::Result<()> {
     let mut stdout = cursor::HideCursor::from(stdout().into_raw_mode()?).into_alternate_screen()?;
     let mut key_stream = async_stdin().keys();
 
-    let mut previous_content = String::new();
-    let mut cumulative_content = String::new();
-    let mut last_display = String::new();
+    let mut state = WatchState::new(args.difference, args.cumulative);
 
     'outer: loop {
         let mut running = RunningCommand::spawn(&args.command)?;
@@ -161,7 +90,7 @@ fn main() -> io::Result<()> {
             &status_begin,
             &command,
             &now,
-            &last_display,
+            state.frame(),
             args.no_title,
         )?;
         let mut running_size = termion::terminal_size()?;
@@ -182,7 +111,7 @@ fn main() -> io::Result<()> {
                     &status_begin,
                     &command,
                     &now,
-                    &last_display,
+                    state.frame(),
                     args.no_title,
                 )?;
             }
@@ -200,36 +129,16 @@ fn main() -> io::Result<()> {
 
         let mut tsize = termion::terminal_size()?;
 
-        let raw_content = command_output::format_output(&output);
-
-        // Process content based on flags
-        let display_content = if args.cumulative {
-            let old_cumulative = cumulative_content.clone();
-            cumulative_content = accumulate_content(&cumulative_content, &raw_content);
-            if args.difference {
-                highlight_differences(&old_cumulative, &cumulative_content)
-            } else {
-                cumulative_content.clone()
-            }
-        } else if args.difference {
-            let highlighted = highlight_differences(&previous_content, &raw_content);
-            previous_content = raw_content;
-            highlighted
-        } else {
-            previous_content = raw_content.clone(); // Store for potential difference highlighting
-            raw_content
-        };
+        state.update(command_output::format_output(&output));
 
         draw(
             &mut stdout,
             &status_begin,
             &command,
             &now,
-            &display_content,
+            state.frame(),
             args.no_title,
         )?;
-
-        last_display = display_content.clone();
 
         let started = Instant::now();
 
@@ -262,7 +171,7 @@ fn main() -> io::Result<()> {
                     &status_begin,
                     &command,
                     &now,
-                    &display_content,
+                    state.frame(),
                     args.no_title,
                 )?;
             }

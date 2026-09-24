@@ -1,5 +1,56 @@
+use crate::watch_state::Frame;
+use std::io::{self, Write};
+use termion::{color, cursor};
 use unicode_segmentation::UnicodeSegmentation;
 use unicode_width::UnicodeWidthStr;
+
+/// Render a frame for a supplied terminal size, without reading terminal state.
+pub fn render<W: Write>(
+    output: &mut W,
+    (width, height): (u16, u16),
+    status_begin: &str,
+    command: &str,
+    now: &str,
+    frame: &Frame,
+    no_title: bool,
+) -> io::Result<()> {
+    if width == 0 || height == 0 {
+        return output.flush();
+    }
+
+    if !no_title {
+        let title = format!("{status_begin}{command}");
+        let padding = (width as usize).saturating_sub(title.len() + now.len() + 1);
+        let status = format!("{title}{}{now}", " ".repeat(padding));
+        let status: String = status.chars().take(width as usize).collect();
+        write!(output, "{status}\r")?;
+        if height > 1 {
+            writeln!(output)?;
+        }
+    }
+
+    let available_height = if no_title {
+        height
+    } else {
+        height.saturating_sub(2)
+    };
+    let highlight_start = color::Fg(color::Red).to_string();
+    for (index, line) in frame.lines(!highlight_start.is_empty()).enumerate() {
+        if index >= available_height as usize {
+            break;
+        }
+        let prefix = if no_title && index == 0 { "\r" } else { "\r\n" };
+        let clipped = clip_line(line.text, width as usize);
+        if line.highlighted && !highlight_start.is_empty() {
+            write!(output, "{prefix}{highlight_start}{clipped}\x1b[0m")?;
+        } else {
+            write!(output, "{prefix}{clipped}")?;
+        }
+    }
+
+    write!(output, "{}", cursor::Goto(1, 1))?;
+    output.flush()
+}
 
 /// Clip at terminal columns, preserving graphemes and complete SGR sequences.
 pub fn clip_line(line: &str, width: usize) -> String {
@@ -69,4 +120,44 @@ pub fn clip_line(line: &str, width: usize) -> String {
         result.push_str("\x1b[0m");
     }
     result
+}
+
+#[cfg(test)]
+mod tests {
+    use super::render;
+    use crate::watch_state::WatchState;
+    use termion::{color, cursor};
+
+    #[test]
+    fn renderer_clips_highlighted_lines_and_resets_color() {
+        let mut state = WatchState::new(true, false);
+        state.update("wide".to_owned());
+        let mut output = Vec::new();
+
+        render(&mut output, (2, 1), "", "", "", state.frame(), true).unwrap();
+
+        let red = color::Fg(color::Red).to_string();
+        let expected = if red.is_empty() {
+            format!("\rwi{}", cursor::Goto(1, 1))
+        } else {
+            format!("\r{red}wi\x1b[0m{}", cursor::Goto(1, 1))
+        };
+        assert_eq!(String::from_utf8(output).unwrap(), expected);
+    }
+
+    #[test]
+    fn renderer_drops_only_the_last_unstyled_blank_difference_line() {
+        let mut state = WatchState::new(true, false);
+        state.update("same\n\n".to_owned());
+        state.update("same".to_owned());
+        let mut output = Vec::new();
+        render(&mut output, (10, 3), "", "", "", state.frame(), true).unwrap();
+        assert_eq!(String::from_utf8(output).unwrap(), "\rsame\x1b[1;1H");
+
+        state.update("same\n\n\n".to_owned());
+        state.update("same".to_owned());
+        let mut output = Vec::new();
+        render(&mut output, (10, 3), "", "", "", state.frame(), true).unwrap();
+        assert_eq!(String::from_utf8(output).unwrap(), "\rsame\r\n\x1b[1;1H");
+    }
 }

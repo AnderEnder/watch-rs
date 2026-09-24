@@ -1,5 +1,6 @@
 import os
 import unittest
+from unittest.mock import patch
 os.environ.pop("NO_COLOR", None)
 from terminal_support import Terminal
 
@@ -17,6 +18,12 @@ class UnicodeTests(unittest.TestCase):
         with Terminal(['-t', '-d', "printf 'x%.0s' $(seq 1 150)"], width=101) as terminal:
             terminal.wait_for(lambda: b'x' * 101 + b'\x1b[0m' in terminal.output)
             terminal.quit()
+
+    def test_no_color_omits_highlight_sequences(self):
+        with patch.dict(os.environ, NO_COLOR='1'):
+            with Terminal(['-t', '-d', '-n', '10', "printf 'x%.0s' $(seq 1 150)"], width=101) as terminal:
+                terminal.wait_for(lambda: b'\r' + b'x' * 101 + b'\x1b[1;1H' in terminal.output)
+                terminal.quit()
 
     def test_hyperlinks_keep_their_visible_text(self):
         command = r"printf '\033]8;;https://example.com\033\\label\033]8;;\033\\ tail'"
