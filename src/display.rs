@@ -35,10 +35,10 @@ pub fn render<W: Write>(
         height.saturating_sub(2)
     };
     let highlight_start = color::Fg(color::Red).to_string();
-    for (index, line) in frame.lines(!highlight_start.is_empty()).enumerate() {
-        if index >= available_height as usize {
-            break;
-        }
+    for (index, line) in frame
+        .visible_lines(available_height as usize, !highlight_start.is_empty())
+        .enumerate()
+    {
         let prefix = if no_title && index == 0 { "\r" } else { "\r\n" };
         let clipped = clip_line(line.text, width as usize);
         if line.highlighted && !highlight_start.is_empty() {
@@ -159,5 +159,35 @@ mod tests {
         let mut output = Vec::new();
         render(&mut output, (10, 3), "", "", "", state.frame(), true).unwrap();
         assert_eq!(String::from_utf8(output).unwrap(), "\rsame\r\n\x1b[1;1H");
+    }
+
+    #[test]
+    fn cumulative_display_follows_the_newest_lines() {
+        let mut state = WatchState::new(false, true);
+        state.update("one\ntwo\nthree".to_owned());
+        let mut output = Vec::new();
+
+        render(&mut output, (10, 2), "", "", "", state.frame(), true).unwrap();
+
+        assert_eq!(
+            String::from_utf8(output).unwrap(),
+            "\rtwo\r\nthree\x1b[1;1H"
+        );
+    }
+
+    #[test]
+    fn cumulative_trim_does_not_expose_partial_ansi_sequence() {
+        for escape in ["\x1b[31m", "\x1b]8;;https://example.com\x1b\\"] {
+            let mut state = WatchState::new(false, true);
+            state.update(format!(
+                "{escape}{}",
+                "x".repeat(4 * 1024 * 1024 + 2 - escape.len())
+            ));
+            let mut output = Vec::new();
+
+            render(&mut output, (10, 1), "", "", "", state.frame(), true).unwrap();
+
+            assert_eq!(String::from_utf8(output).unwrap(), "\rxxxxxxxxxx\x1b[1;1H");
+        }
     }
 }

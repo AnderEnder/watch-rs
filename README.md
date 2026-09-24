@@ -47,7 +47,7 @@ Place watch options before the command. With multiple command arguments, watch r
 
 - `-n, --interval <INTERVAL>`: Set execution interval in seconds (default: 2; must be finite, positive, and representable with nanosecond precision)
 - `-d, --difference`: Highlight differences between updates
-- `-c, --cumulative`: Cumulative mode
+- `-c, --cumulative`: Show the newest lines of accumulated output; retain recent history up to 4 MiB and 65,535 lines
 - `-t, --no-title`: Disable title display
 - `-h, --help`: Print help information
 
