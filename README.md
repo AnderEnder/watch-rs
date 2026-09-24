@@ -62,7 +62,8 @@ Rust application that:
 - Uses clap for argument parsing with derive macros
 - Implements terminal UI using termion's alternate screen and raw mode
 - Runs a single command string as shell syntax, or executes multiple command words with their argument boundaries preserved
-- Handles real-time input and display updates in a main event loop
+- Keeps cumulative and difference state in `watch_state`, independent of terminal I/O
+- Renders frames at a supplied terminal size in `display`, while the main loop handles input and redraw timing
 
 ## Testing
 
