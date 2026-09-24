@@ -59,8 +59,6 @@ impl Frame {
 pub struct WatchState {
     difference: bool,
     cumulative: bool,
-    previous_content: String,
-    cumulative_content: String,
     frame: Frame,
 }
 
@@ -69,8 +67,6 @@ impl WatchState {
         Self {
             difference,
             cumulative,
-            previous_content: String::new(),
-            cumulative_content: String::new(),
             frame: Frame::default(),
         }
     }
@@ -80,11 +76,7 @@ impl WatchState {
     }
 
     pub fn update(&mut self, raw_content: String) {
-        let old_content = if self.cumulative {
-            &self.cumulative_content
-        } else {
-            &self.previous_content
-        };
+        let old_content = &self.frame.text;
         let mut content = if self.cumulative && !old_content.is_empty() {
             format!("{old_content}\n{raw_content}")
         } else {
@@ -102,11 +94,6 @@ impl WatchState {
         } else {
             (Vec::new(), 0)
         };
-        if self.cumulative {
-            self.cumulative_content = content.clone();
-        } else if self.difference {
-            self.previous_content = content.clone();
-        }
         self.frame = Frame {
             text: content,
             highlighted,
